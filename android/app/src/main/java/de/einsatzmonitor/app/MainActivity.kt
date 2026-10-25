@@ -12,6 +12,9 @@ import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.content.res.Configuration
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
@@ -24,11 +27,13 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var web: WebView
+    private lateinit var root: FrameLayout
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -36,15 +41,19 @@ class MainActivity : ComponentActivity() {
         createChannel()
         requestNotificationPermission()
 
+        // Die Webansicht liegt in einem Rahmen, der den Platz von Status- und Navigationsleiste freihält.
+        // (Ein Innenabstand direkt an der WebView wird von Android ignoriert.)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        root = FrameLayout(this)
         web = WebView(this)
-        setContentView(web)
-
-        // Inhalte nicht unter Status- und Navigationsleiste legen
-        ViewCompat.setOnApplyWindowInsetsListener(web) { v, insets ->
+        root.addView(web, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        setContentView(root)
+        ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             WindowInsetsCompat.CONSUMED
         }
+        applyBars(false)
 
         web.settings.apply {
             javaScriptEnabled = true
@@ -92,6 +101,17 @@ class MainActivity : ComponentActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         web.saveState(outState)
+    }
+
+    /** Farbe hinter Status- und Navigationsleiste und passende helle/dunkle Symbole */
+    private fun applyBars(dark: Boolean) {
+        val color = if (dark) 0xFF1A1F26.toInt() else 0xFFFFFFFF.toInt()
+        root.setBackgroundColor(color)
+        web.setBackgroundColor(color)
+        WindowCompat.getInsetsController(window, root).apply {
+            isAppearanceLightStatusBars = !dark
+            isAppearanceLightNavigationBars = !dark
+        }
     }
 
     private fun openExternal(uri: Uri) {
@@ -163,6 +183,15 @@ class MainActivity : ComponentActivity() {
         fun openExternal(url: String) {
             runOnUiThread { this@MainActivity.openExternal(Uri.parse(url)) }
         }
+
+        @JavascriptInterface
+        fun setDarkBars(dark: Boolean) {
+            runOnUiThread { applyBars(dark) }
+        }
+
+        @JavascriptInterface
+        fun isSystemDark(): Boolean =
+            (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 
         @JavascriptInterface
         fun keepScreenOn(on: Boolean) {

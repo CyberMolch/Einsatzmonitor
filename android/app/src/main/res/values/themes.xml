@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Einsatzmonitor" parent="android:Theme.Material.NoActionBar">
+    <style name="Theme.Einsatzmonitor" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/bg</item>
         <item name="android:colorAccent">@color/fire</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
     </style>
-    <color name="bg">#0F1216</color>
+    <color name="bg">#FFFFFF</color>
     <color name="fire">#C8231B</color>
 </resources>
