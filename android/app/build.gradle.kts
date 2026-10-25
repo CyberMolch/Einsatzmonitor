@@ -11,15 +11,28 @@ android {
         applicationId = "de.einsatzmonitor.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        // Jeder GitHub-Bau bekommt eine höhere Versionsnummer, damit Updates sich drüberinstallieren lassen
+        val build = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
+        versionCode = build
+        versionName = "1.0.$build"
     }
 
+    // Fester Schlüssel: Nur so akzeptiert Android spätere Versionen als Update der installierten App.
+    signingConfigs {
+        create("fest") {
+            storeFile = file("einsatzmonitor.jks")
+            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "76855e5883712c49dca61a6bf13d240f"
+            keyAlias = "einsatzmonitor"
+            keyPassword = System.getenv("KEYSTORE_PASSWORD") ?: "76855e5883712c49dca61a6bf13d240f"
+        }
+    }
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("fest")
+        }
         release {
             isMinifyEnabled = false
-            // Für den Play Store eigenen Signaturschlüssel eintragen; zum Testen reicht die Debug-APK.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("fest")
         }
     }
     compileOptions {

@@ -13,9 +13,12 @@ Zeigt die aktuellen Alarmierungen vom Pager-Server `http://pipager.dyndns.org:21
 
 ## APK bauen
 
-**Variante A, ohne eigene Installation (GitHub):**
-1. Bei jeder Änderung im Ordner `android/` läuft unter „Actions“ automatisch „APK bauen“ (ca. 3–4 Minuten). Manuell starten geht über „Run workflow“.
-2. Im fertigen Lauf unten bei „Artifacts“ die Datei `Einsatzmonitor-APK` herunterladen, entpacken, `app-debug.apk` aufs Handy kopieren und installieren (Installation aus unbekannten Quellen erlauben).
+**Download (direkt aufs Handy):**
+https://github.com/CyberMolch/Einsatzmonitor/releases/latest/download/Einsatzmonitor.apk
+
+Bei jeder Änderung im Ordner `android/` baut GitHub unter „Actions“ automatisch eine neue Version (ca. 3–4 Minuten) und ersetzt die Datei unter diesem Link. Neue Versionen installieren sich über die alte, Einstellungen bleiben erhalten.
+
+Hinweis: Der Signaturschlüssel `app/einsatzmonitor.jks` liegt im Repository. Für eine selbst verteilte App reicht das; wer ihn sicherer haben will, legt das Passwort als Secret `KEYSTORE_PASSWORD` an und ändert es.
 
 **Variante B, Android Studio:**
 Ordner `android/` mit „Open“ öffnen, Gradle-Sync abwarten, dann *Build → Build App Bundle(s) / APK(s) → Build APK(s)*.
