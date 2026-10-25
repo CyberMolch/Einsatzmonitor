@@ -34,6 +34,7 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var web: WebView
     private lateinit var root: FrameLayout
+    private var topInsetPx = 0
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,8 +42,8 @@ class MainActivity : ComponentActivity() {
         createChannel()
         requestNotificationPermission()
 
-        // Die Webansicht liegt in einem Rahmen, der den Platz von Status- und Navigationsleiste freihält.
-        // (Ein Innenabstand direkt an der WebView wird von Android ignoriert.)
+        // Die Webansicht liegt in einem Rahmen, der unten und seitlich Platz für die Systemleisten lässt.
+        // Oben reicht die Seite bis unter die Statusleiste (Foto-Kopf); deren Höhe bekommt die Seite als CSS-Variable --sat.
         WindowCompat.setDecorFitsSystemWindows(window, false)
         root = FrameLayout(this)
         web = WebView(this)
@@ -50,7 +51,9 @@ class MainActivity : ComponentActivity() {
         setContentView(root)
         ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
-            v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            v.setPadding(bars.left, 0, bars.right, bars.bottom)
+            topInsetPx = bars.top
+            pushTopInset()
             WindowInsetsCompat.CONSUMED
         }
         applyBars(false)
@@ -68,6 +71,10 @@ class MainActivity : ComponentActivity() {
             userAgentString = "$userAgentString Einsatzmonitor-Android/1.0"
         }
         web.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView, url: String) {
+                pushTopInset()
+            }
+
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val uri = request.url
                 if (uri.scheme == "file") return false
@@ -103,13 +110,19 @@ class MainActivity : ComponentActivity() {
         web.saveState(outState)
     }
 
-    /** Farbe hinter Status- und Navigationsleiste und passende helle/dunkle Symbole */
+    /** Höhe der Statusleiste an die Seite geben (in CSS-Pixeln) */
+    private fun pushTopInset() {
+        if (!::web.isInitialized) return
+        val css = topInsetPx / resources.displayMetrics.density
+        web.evaluateJavascript("document.documentElement.style.setProperty('--sat','${css}px')", null)
+    }
+
+    /** Statusleiste: immer weiße Symbole auf dem dunklen Kopf. Navigationsleiste: passend zum Design. */
     private fun applyBars(dark: Boolean) {
-        val color = if (dark) 0xFF1A1F26.toInt() else 0xFFFFFFFF.toInt()
-        root.setBackgroundColor(color)
-        web.setBackgroundColor(color)
+        val bottom = if (dark) 0xFF181D24.toInt() else 0xFFFFFFFF.toInt()
+        root.setBackgroundColor(bottom)
         WindowCompat.getInsetsController(window, root).apply {
-            isAppearanceLightStatusBars = !dark
+            isAppearanceLightStatusBars = false
             isAppearanceLightNavigationBars = !dark
         }
     }
@@ -188,6 +201,11 @@ class MainActivity : ComponentActivity() {
         fun setDarkBars(dark: Boolean) {
             runOnUiThread { applyBars(dark) }
         }
+
+        @JavascriptInterface
+        fun appVersion(): String = try {
+            "Version " + packageManager.getPackageInfo(packageName, 0).versionName
+        } catch (_: Exception) { "" }
 
         @JavascriptInterface
         fun isSystemDark(): Boolean =
