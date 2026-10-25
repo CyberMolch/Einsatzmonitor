@@ -1,0 +1,684 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Einsatzmonitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+/* Layout: Leitstellen-Konsole. Kopfzeile mit Lage, links Einsatzliste, rechts Karte; am Handy umschaltbar. */
+:root{
+  --bg:#eef0f2; --panel:#ffffff; --panel-2:#f5f6f8; --line:#d6dae0; --fg:#15191f; --muted:#5b6470;
+  --fire:#c8231b; --fire-soft:#fbe6e4; --tech:#b86a00; --tech-soft:#fdf0db; --med:#1d5fb8; --med-soft:#e3edfb; --other:#4c5866; --other-soft:#e7eaee;
+  --ok:#1f7a45; --flash:#ffe9a8;
+  --f-display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1216; --panel:#171b21; --panel-2:#1d222a; --line:#2b323c; --fg:#e8ebef; --muted:#97a1ad;
+  --fire:#ff5a4a; --fire-soft:#3a1715; --tech:#f0a338; --tech-soft:#3a2810; --med:#6aa5ff; --med-soft:#15253d; --other:#a5b0bd; --other-soft:#232a33;
+  --ok:#4fc983; --flash:#4a3d12; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1216; --panel:#171b21; --panel-2:#1d222a; --line:#2b323c; --fg:#e8ebef; --muted:#97a1ad;
+  --fire:#ff5a4a; --fire-soft:#3a1715; --tech:#f0a338; --tech-soft:#3a2810; --med:#6aa5ff; --med-soft:#15253d; --other:#a5b0bd; --other-soft:#232a33;
+  --ok:#4fc983; --flash:#4a3d12; color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:14px/1.45 var(--f-body);display:flex;flex-direction:column;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--fire);outline-offset:2px}
+
+/* Kopf */
+header{background:var(--panel);border-bottom:1px solid var(--line);
+  padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-wrap:wrap;align-items:center;gap:10px 20px}
+.brand{display:flex;align-items:center;gap:10px;margin-right:auto}
+.brand svg{flex:none}
+.brand h1{font:700 26px/1 var(--f-display);letter-spacing:.04em;text-transform:uppercase;margin:0}
+.brand small{display:block;font:500 11px/1.2 var(--f-mono);color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+.stats{display:flex;gap:18px;flex-wrap:wrap}
+.stat{display:flex;flex-direction:column}
+.stat b{font:600 22px/1 var(--f-display);font-variant-numeric:tabular-nums}
+.stat span{font:500 10px/1.3 var(--f-mono);color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.status{display:flex;align-items:center;gap:8px;font:500 12px var(--f-mono);color:var(--muted)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.dot.live{background:var(--ok);box-shadow:0 0 0 0 var(--ok);animation:pulse 2s infinite}
+.dot.err{background:var(--fire)}
+.dot.demo{background:var(--tech)}
+@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 60%,transparent)}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
+.icon-btn{border:1px solid var(--line);background:var(--panel-2);border-radius:6px;padding:6px 10px;display:inline-flex;align-items:center;gap:6px;font-size:13px}
+.icon-btn:hover{border-color:var(--muted)}
+.icon-btn.on{border-color:var(--fire);color:var(--fire)}
+
+/* Banner */
+.banner{background:var(--tech-soft);color:var(--fg);border-bottom:1px solid var(--line);font-size:13px;
+  padding-block:8px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.banner b{color:var(--tech)}
+
+/* Hauptbereich */
+main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(340px,440px) 1fr}
+.listpane{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line);background:var(--panel)}
+.toolbar{padding:12px 16px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:transparent;border-radius:999px;padding:4px 11px;font:500 12px var(--f-mono);letter-spacing:.03em}
+.chip[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.chip .n{opacity:.65;margin-left:4px}
+.search{width:100%;border:1px solid var(--line);background:var(--panel-2);border-radius:6px;padding:7px 10px}
+.list{flex:1;overflow-y:auto;min-height:0}
+.daysep{position:sticky;top:0;z-index:2;background:var(--panel-2);border-bottom:1px solid var(--line);
+  padding:5px 16px;font:600 11px var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.card{display:grid;grid-template-columns:4px 1fr;border-bottom:1px solid var(--line);cursor:pointer;background:var(--panel);width:100%;text-align:left;border-top:0;border-left:0;border-right:0;padding:0}
+.card:hover{background:var(--panel-2)}
+.card[aria-current="true"]{background:var(--panel-2);box-shadow:inset 0 0 0 1px var(--muted)}
+.card .stripe{background:var(--k)}
+.card .body{padding:11px 14px 12px;min-width:0;display:flex;flex-direction:column;gap:5px}
+.card.flash{animation:flash 2.4s ease-out 3}
+@keyframes flash{0%{background:var(--flash)}100%{background:var(--panel)}}
+.row1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.code{font:700 15px/1 var(--f-display);letter-spacing:.05em;padding:4px 7px 3px;border-radius:4px;background:var(--k);color:#fff}
+.cat{font:600 11px var(--f-mono);letter-spacing:.04em;padding:3px 6px;border-radius:4px;background:var(--ks);color:var(--k)}
+.time{margin-left:auto;font:500 12px var(--f-mono);color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.place{font:600 19px/1.15 var(--f-display);letter-spacing:.01em}
+.place .addr{font:400 14px var(--f-body);color:var(--muted);display:block;margin-top:2px}
+.desc{font-size:14px}
+.desc .cut{color:var(--muted)}
+.units{font:400 12px var(--f-mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.empty{padding:40px 24px;text-align:center;color:var(--muted)}
+
+/* Karte */
+.mappane{position:relative;min-height:0;min-width:0}
+#map{position:absolute;inset:0;background:var(--panel-2)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.9) saturate(.7)}}
+:root[data-theme="dark"] .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.9) saturate(.7)}
+.leaflet-container{font:inherit}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--panel);color:var(--fg)}
+.pin{width:auto!important;height:auto!important;background:none;border:0}
+.pin div{transform:translate(-50%,-100%);display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;
+  font:700 13px/1 var(--f-display);letter-spacing:.04em;color:#fff;background:var(--k);padding:5px 7px 4px;border-radius:4px;
+  border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);position:relative}
+.pin div::after{content:"";position:absolute;left:50%;bottom:-7px;margin-left:-5px;border:5px solid transparent;border-top-color:#fff;border-bottom:0}
+.pin.sel div{transform:translate(-50%,-100%) scale(1.25);outline:3px solid var(--k);outline-offset:1px}
+.pin.approx div{border-style:dashed}
+
+/* Detail */
+.detail{position:absolute;z-index:500;right:12px;top:12px;width:min(380px,calc(100% - 24px));max-height:calc(100% - 24px);overflow:auto;
+  background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.22)}
+.detail header{position:static;border-bottom:1px solid var(--line);padding:12px 14px;gap:8px}
+.detail .close{margin-left:auto}
+.detail section{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
+.detail section:last-child{border-bottom:0}
+.lbl{font:600 10px var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.ulist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.ulist li{display:grid;grid-template-columns:auto 1fr auto;gap:10px;padding:5px 0;border-bottom:1px dashed var(--line);align-items:baseline}
+.ulist li:last-child{border-bottom:0}
+.ulist .t{font:500 12px var(--f-mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.ulist .ric{font:400 11px var(--f-mono);color:var(--muted)}
+.links{display:flex;gap:8px;flex-wrap:wrap}
+.links a{color:var(--fg);text-decoration:none}
+.geo-note{font-size:12px;color:var(--muted)}
+.raw{font:400 11px/1.5 var(--f-mono);color:var(--muted);white-space:pre-wrap;word-break:break-word;margin:0}
+
+/* Mobile Tabs */
+.tabs{display:none}
+
+/* Dialog */
+dialog{border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--fg);width:min(560px,calc(100% - 32px));padding:0}
+dialog::backdrop{background:rgba(10,12,16,.55)}
+dialog form{display:flex;flex-direction:column;gap:14px;padding:18px}
+dialog h2{font:700 22px/1 var(--f-display);text-transform:uppercase;letter-spacing:.04em;margin:0}
+dialog label{display:flex;flex-direction:column;gap:4px;font-size:13px}
+dialog label span{font:600 10px var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+dialog input,dialog textarea,dialog select{border:1px solid var(--line);background:var(--panel-2);border-radius:6px;padding:7px 9px}
+dialog textarea{min-height:180px;font:12px/1.45 var(--f-mono)}
+dialog .hint{font-size:12px;color:var(--muted);margin:0}
+dialog .actions{display:flex;gap:8px;justify-content:flex-end}
+.primary{background:var(--fire);color:#fff;border:0;border-radius:6px;padding:8px 14px;font-weight:600}
+.secondary{background:transparent;border:1px solid var(--line);border-radius:6px;padding:8px 14px}
+
+@media (max-width:760px){
+  main{grid-template-columns:1fr;grid-template-rows:1fr}
+  .listpane,.mappane{grid-area:1/1}
+  body[data-view="map"] .listpane{visibility:hidden}
+  body[data-view="list"] .mappane{visibility:hidden}
+  .listpane{border-right:0}
+  .tabs{display:flex;border-top:1px solid var(--line);background:var(--panel);padding-bottom:env(safe-area-inset-bottom,0px)}
+  .tabs button{flex:1;border:0;background:transparent;padding:11px;font:600 15px var(--f-display);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .tabs button[aria-selected="true"]{color:var(--fire);box-shadow:inset 0 3px 0 var(--fire)}
+  body{padding-bottom:0}
+  .stats{display:none}
+  header .icon-btn span{display:none}
+  header .status{order:5;width:100%}
+  .brand h1{font-size:23px}
+  .detail{top:auto;bottom:8px;right:8px;left:8px;width:auto;max-height:65%}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body data-view="list">
+
+<header>
+  <div class="brand">
+    <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><rect width="34" height="34" rx="6" fill="var(--fire)"/><path d="M17 6c1.2 4.2 6.5 6.6 6.5 12.3A6.5 6.5 0 0 1 17 25a6.5 6.5 0 0 1-6.5-6.7c0-2.6 1.3-4.4 2.7-5.8.2 1.9 1 3 2.3 3.6-.6-3.8.6-7.4 1.5-10.1z" fill="#fff"/><rect x="7" y="27" width="20" height="2.4" rx="1.2" fill="#fff"/></svg>
+    <div><h1>Einsatzmonitor</h1><small id="src-label">Alarmierungen · Pager</small></div>
+  </div>
+  <div class="stats" aria-label="Lage">
+    <div class="stat"><b id="st-today">0</b><span>Einsätze heute</span></div>
+    <div class="stat"><b id="st-units">0</b><span>Alarmierungen</span></div>
+    <div class="stat"><b id="st-last">–</b><span>Letzter Alarm</span></div>
+  </div>
+  <div class="status" aria-live="polite"><span class="dot" id="dot"></span><span id="status-text">Starte …</span></div>
+  <button class="icon-btn" id="btn-refresh" title="Jetzt aktualisieren">↻ <span>Aktualisieren</span></button>
+  <button class="icon-btn" id="btn-sound" title="Ton bei neuem Einsatz" aria-pressed="false">🔔 <span id="sound-label">Ton aus</span></button>
+  <button class="icon-btn" id="btn-wake" title="Bildschirm eingeschaltet lassen" aria-pressed="false" hidden>☀ <span id="wake-label">Display aus</span></button>
+  <button class="icon-btn" id="btn-settings" title="Einstellungen">⚙ <span>Quelle</span></button>
+</header>
+<div class="banner" id="banner" hidden></div>
+
+<main>
+  <section class="listpane" aria-label="Einsätze">
+    <div class="toolbar">
+      <div class="chips" id="chips" role="group" aria-label="Filter"></div>
+      <input class="search" id="search" type="search" placeholder="Ort, Straße, Einheit oder Stichwort suchen">
+    </div>
+    <div class="list" id="list"></div>
+  </section>
+  <section class="mappane" aria-label="Karte">
+    <div id="map"></div>
+    <aside class="detail" id="detail" hidden></aside>
+  </section>
+</main>
+
+<nav class="tabs" role="tablist">
+  <button role="tab" id="tab-list" aria-selected="true">Liste</button>
+  <button role="tab" id="tab-map" aria-selected="false">Karte</button>
+</nav>
+
+<dialog id="dlg-settings">
+  <form method="dialog" id="form-settings">
+    <h2>Datenquelle</h2>
+    <label><span>Adresse der Alarmdaten</span><input id="cfg-url" type="text" inputmode="url"></label>
+    <label><span>Aktualisierung (Sekunden)</span><input id="cfg-interval" type="number" min="5" max="600" step="5"></label>
+    <label><span>Suchgebiet für Karte (West, Nord, Ost, Süd)</span><input id="cfg-viewbox" type="text"></label>
+    <label><span>Zusatz für Ortssuche</span><input id="cfg-region" type="text" placeholder="z. B. Landkreis Wittenberg"></label>
+    <p class="hint">Liegt diese Seite auf demselben Server wie die Alarmdaten, genügt als Adresse ein „/“. Von einem anderen Server aus muss der Pager-Server Zugriffe erlauben (CORS-Header), sonst blockiert der Browser die Abfrage.</p>
+    <div class="actions">
+      <button type="button" class="secondary" id="btn-paste-open">Daten einfügen …</button>
+      <button value="cancel" class="secondary">Abbrechen</button>
+      <button value="save" class="primary" id="btn-save">Speichern</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-paste">
+  <form method="dialog">
+    <h2>Daten einfügen</h2>
+    <label><span>Rohtext vom Pager</span><textarea id="paste-text" spellcheck="false"></textarea></label>
+    <p class="hint">Zum Testen ohne Serververbindung. Die automatische Abfrage pausiert, bis du wieder „Aktualisieren“ drückst.</p>
+    <div class="actions">
+      <button value="cancel" class="secondary">Abbrechen</button>
+      <button value="ok" class="primary" id="btn-paste-ok">Anzeigen</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+"use strict";
+
+/* ---------- Konfiguration ---------- */
+const DEFAULTS = {
+  url: location.protocol.startsWith("http") && location.host.startsWith("pipager.dyndns.org") ? "/pager/DME.txt" : "http://pipager.dyndns.org:211/pager/DME.txt",
+  interval: 30,
+  viewbox: "12.05,52.10,13.25,51.62",       // Landkreis Wittenberg und Umgebung
+  region: "Sachsen-Anhalt"
+};
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem("em:"+k); return v == null ? d : JSON.parse(v);}catch{ return d; } },
+  set(k, v){ try{ localStorage.setItem("em:"+k, JSON.stringify(v)); }catch{} }
+};
+let cfg = Object.assign({}, DEFAULTS, store.get("cfg", {}));
+
+/* Beispieldaten aus dem Pager-Log (Screenshot), Datum auf heute gesetzt */
+const today = new Date(); const pad = n => String(n).padStart(2,"0");
+const TODAY = `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
+const DEMO = `########
+00:08:34 ${TODAY} #######
+FFW Kremitz(1928957) 13:25:20 ${TODAY} F3 Jessen Alte Wittenberger Straße BMA: Industrieanlage Fabr
+FFW Schweinitz(1929241) 13:25:21 ${TODAY} F3 Jessen Alte Wittenberger Straße BMA: Industrieanlage Fabr
+FFW Jessen Elster(1928945) 13:25:22 ${TODAY} F3 Jessen Alte Wittenberger Straße BMA: Industrieanlage Fabr
+FFW Grabo(1929025) 13:25:23 ${TODAY} F3 Jessen Alte Wittenberger Straße BMA: Industrieanlage Fabr
+unknown(1928654) 16:36:33 ${TODAY} THKl Coswig B 107 Coswig-Abzweig Köselitz VU FW + RD: Motorrad gest<EO
+Coswig pager(1928650) 16:36:34 ${TODAY} THKl Coswig B 107 Coswig-Abzweig Köselitz VU FW + RD: Motorrad gest<EO
+Stadtwehleiter Coswig(1928651) 16:36:35 ${TODAY} THKl Coswig B 107 Coswig-Abzweig Köselitz VU FW + RD: Motorrad gest<EO
+FFW Kremitz(1928957) 18:54:42 ${TODAY} THKl Leipa OVS Leipa-Gentha THL: Ast/Baum gefallen au<EO
+FFW Gentha(1929001) 18:54:43 ${TODAY} THKl Leipa OVS Leipa-Gentha THL: Ast/Baum gefallen au<EO
+FFW Stadtwehrleiter Zahna(1930213) 20:44:39 ${TODAY} F1 Elster Betonwerkstraße FEUER/RAUCH: Kleiderconta
+FFW Elster(1928729) 20:44:40 ${TODAY} F1 Elster Betonwerkstraße FEUER/RAUCH: Kleiderconta`;
+
+/* ---------- Parser ---------- */
+const LINE_RE = /^(.+?)\s*\((\d{3,})\)\s+(\d{1,2}:\d{2}:\d{2})\s+(\d{4}-\d{2}-\d{2})\s+(.+)$/;
+const CAT_RE  = /(?:^|\s)((?:[A-ZÄÖÜ\/]{2,}(?:\s+\+\s+|\s+))*[A-ZÄÖÜ\/]{2,})$/;
+
+function parseLine(line){
+  // Kopfzeile "######## 00:08:34 2026-10-25 #######" kann vor der ersten Meldung stehen
+  line = line.replace(/^\s*#+\s*(?:\d{1,2}:\d{2}:\d{2}\s+\d{4}-\d{2}-\d{2}\s*)?#*\s*/, "");
+  const m = line.trim().match(LINE_RE);
+  if(!m) return null;
+  const [, unit, ric, time, date, rest] = m;
+  let head = rest, desc = "";
+  const ci = rest.indexOf(":");
+  if(ci > -1){ head = rest.slice(0, ci).trim(); desc = rest.slice(ci+1).trim(); }
+  let truncated = false;
+  desc = desc.replace(/\s*<EOT>\s*$/i, "").replace(/\s*<\s*EO\s*$/i, () => { truncated = true; return ""; });
+  const toks = head.split(/\s+/);
+  const code = toks.shift() || "";
+  const ort  = toks.shift() || "";
+  let rem = toks.join(" ");
+  let cat = "";
+  const cm = rem.match(CAT_RE);
+  if(cm && cm[1] !== rem.trim()){ cat = cm[1].trim(); rem = rem.slice(0, cm.index).trim(); }
+  else if(cm && toks.length === 1){ cat = cm[1].trim(); rem = ""; }
+  const [h, mi, s] = time.split(":").map(Number);
+  const [y, mo, d] = date.split("-").map(Number);
+  return { unit: unit.trim(), ric, time, date, ts: new Date(y, mo-1, d, h, mi, s).getTime(),
+           code, ort, addr: rem, cat, desc, truncated, raw: line.trim() };
+}
+
+function extractText(txt){
+  if(/<(html|body|pre|br|div|p)[\s>\/]/i.test(txt)){
+    const doc = new DOMParser().parseFromString(txt.replace(/<br\s*\/?>/gi, "\n"), "text/html");
+    return doc.body ? doc.body.textContent : txt;
+  }
+  return txt;
+}
+
+function parseFeed(text){
+  const lines = extractText(text).replace(/<EOT>/gi, "<EOT>\n").split(/\r?\n/);
+  const alerts = []; let header = null;
+  for(const l of lines){
+    const a = parseLine(l);
+    if(a){ alerts.push(a); continue; }
+    const hm = l.match(/(\d{1,2}:\d{2}:\d{2})\s+(\d{4}-\d{2}-\d{2})/);
+    if(hm && !header) header = { time: hm[1], date: hm[2] };
+  }
+  return { alerts, header };
+}
+
+/* Alarmierungen zu Einsätzen bündeln: gleicher Inhalt innerhalb von 10 Minuten */
+function groupIncidents(alerts){
+  const sorted = [...alerts].sort((a,b) => a.ts - b.ts);
+  const out = [];
+  for(const a of sorted){
+    const key = [a.date, a.code, a.ort, a.addr, a.cat, a.desc].join("|");
+    const inc = out.find(i => i.key === key && a.ts - i.lastTs <= 10*60*1000);
+    if(inc){ inc.alerts.push(a); inc.lastTs = a.ts; if(a.truncated) inc.truncated = true; }
+    else out.push({ key, id: key + "|" + a.ts, ts: a.ts, lastTs: a.ts, date: a.date, time: a.time,
+                    code: a.code, ort: a.ort, addr: a.addr, cat: a.cat, desc: a.desc, truncated: a.truncated, alerts: [a] });
+  }
+  return out.sort((a,b) => b.ts - a.ts);
+}
+
+/* ---------- Einstufung ---------- */
+function kind(inc){
+  const c = inc.code.toUpperCase(), k = (inc.cat||"").toUpperCase();
+  if(/^(F|B)\d|^F\b|FEUER|BRAND|BMA/.test(c) || /FEUER|BRAND|BMA/.test(k)) return "fire";
+  if(/^TH|^THL|^THK|^VU|^H\d|^G\d|^ABC/.test(c) || /THL|VU|TH/.test(k)) return "tech";
+  if(/^RD|^MANV|^NOT/.test(c)) return "med";
+  return "other";
+}
+const KIND_LABEL = { fire:"Brand", tech:"Hilfeleistung", med:"Rettung", other:"Sonstige" };
+const CAT_NAMES = { "BMA":"Brandmeldeanlage", "THL":"Technische Hilfe", "VU":"Verkehrsunfall", "VU FW + RD":"Verkehrsunfall, Feuerwehr + Rettungsdienst", "FEUER/RAUCH":"Feuer / Rauch" };
+const ADDR_ABBR = { "OVS":"Ortsverbindungsstraße" };
+
+/* ---------- Geokodierung (OpenStreetMap Nominatim) ---------- */
+const geoCache = store.get("geo", {});
+const geoQueue = []; let geoBusy = false;
+const STOP = new Set(["Abzweig","Alte","Alter","Altes","Neue","Neuer","Straße","Strasse","Höhe","Richtung","Kreuzung","Ortsausgang","Ortseingang","Am","An","Zum","Zur","Nähe","OVS","Gemarkung"]);
+const STREETISH = /(straße|strasse|str\.|weg|platz|allee|ring|gasse|damm|chaussee|siedlung|markt|ufer|hof|winkel|steig|pfad)\b/i;
+
+function candidates(inc){
+  const c = [], ort = inc.ort, region = cfg.region ? ", " + cfg.region : "";
+  if(inc.addr && STREETISH.test(inc.addr)) c.push({ q: `${inc.addr}, ${ort}${region}`, exact: true });
+  if(inc.addr){
+    const names = inc.addr.split(/[\s-]+/).filter(w => /^[A-ZÄÖÜ][a-zäöüß]{2,}$/.test(w) && !STOP.has(w) && !STREETISH.test(w) && w !== ort);
+    for(const n of names.reverse()) c.push({ q: `${n}${region}`, exact: false });
+  }
+  if(ort) c.push({ q: `${ort}${region}`, exact: false });
+  return c;
+}
+
+async function nominatim(q){
+  if(q in geoCache) return geoCache[q];
+  const u = new URL("https://nominatim.openstreetmap.org/search");
+  u.search = new URLSearchParams({ format:"jsonv2", limit:"1", countrycodes:"de", "accept-language":"de", q,
+                                   viewbox: cfg.viewbox, bounded: cfg.viewbox ? "1" : "0" });
+  const r = await fetch(u, { headers: { "Accept":"application/json" } });
+  if(!r.ok) throw new Error("Geo " + r.status);
+  const j = await r.json();
+  const res = j[0] ? { lat: +j[0].lat, lon: +j[0].lon, name: j[0].display_name } : null;
+  geoCache[q] = res; store.set("geo", geoCache);
+  await new Promise(r => setTimeout(r, 1100)); // Nutzungsrichtlinie: max. 1 Anfrage/Sekunde
+  return res;
+}
+
+function locate(inc){
+  const k = "inc:" + [inc.ort, inc.addr].join("|");
+  if(geoCache[k] !== undefined) return Promise.resolve(geoCache[k]);
+  return new Promise(resolve => { geoQueue.push({ inc, k, resolve }); pumpGeo(); });
+}
+async function pumpGeo(){
+  if(geoBusy) return; geoBusy = true;
+  while(geoQueue.length){
+    const { inc, k, resolve } = geoQueue.shift();
+    if(geoCache[k] !== undefined){ resolve(geoCache[k]); continue; }
+    let found = null;
+    for(const c of candidates(inc)){
+      try{ const r = await nominatim(c.q); if(r){ found = { ...r, exact: c.exact, q: c.q }; break; } }
+      catch(e){ break; }
+    }
+    geoCache[k] = found; store.set("geo", geoCache);
+    resolve(found);
+  }
+  geoBusy = false;
+}
+
+/* ---------- Zustand ---------- */
+let incidents = [], header = null, selectedId = null, filter = store.get("filter", "all"), query = "";
+let mode = "live", timer = null, soundOn = false, firstLoad = true;
+const seen = new Set(store.get("seen", []));
+
+/* ---------- Karte ---------- */
+const map = L.map("map", { zoomControl: true, attributionControl: true }).setView([51.86, 12.72], 10);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
+const markers = new Map();
+
+function pinIcon(inc, sel, approx){
+  return L.divIcon({ className: "pin" + (sel ? " sel" : "") + (approx ? " approx" : ""),
+    html: `<div style="--k:var(--${kind(inc)})">${esc(inc.code)}</div>`, iconSize: null });
+}
+
+/* ---------- Hilfen ---------- */
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+function ago(ts){
+  const m = Math.round((Date.now() - ts) / 60000);
+  if(m < 1) return "gerade eben"; if(m < 60) return `vor ${m} Min`;
+  const h = Math.floor(m/60); if(h < 24) return `vor ${h} Std ${m%60} Min`;
+  return new Date(ts).toLocaleDateString("de-DE");
+}
+function dayLabel(date){
+  const [y,m,d] = date.split("-").map(Number); const dt = new Date(y, m-1, d);
+  const t = new Date(); t.setHours(0,0,0,0);
+  const diff = Math.round((t - dt) / 86400000);
+  const s = dt.toLocaleDateString("de-DE", { weekday:"long", day:"2-digit", month:"2-digit", year:"numeric" });
+  return diff === 0 ? "Heute · " + s : diff === 1 ? "Gestern · " + s : s;
+}
+function addrText(inc){
+  return (inc.addr || "").split(" ").map(w => ADDR_ABBR[w] ? `<abbr title="${ADDR_ABBR[w]}">${w}</abbr>` : esc(w)).join(" ");
+}
+function filtered(){
+  const q = query.trim().toLowerCase();
+  return incidents.filter(i => (filter === "all" || kind(i) === filter) &&
+    (!q || [i.code,i.ort,i.addr,i.cat,i.desc,...i.alerts.map(a=>a.unit)].join(" ").toLowerCase().includes(q)));
+}
+
+/* ---------- Darstellung ---------- */
+function renderChips(){
+  const counts = { all: incidents.length, fire:0, tech:0, med:0, other:0 };
+  incidents.forEach(i => counts[kind(i)]++);
+  const opts = [["all","Alle"],["fire","Brand"],["tech","Hilfeleistung"],["med","Rettung"],["other","Sonstige"]]
+    .filter(([k]) => k === "all" || counts[k] > 0 || filter === k);
+  $("chips").innerHTML = opts.map(([k,l]) =>
+    `<button class="chip" data-f="${k}" aria-pressed="${filter===k}">${l}<span class="n">${counts[k]}</span></button>`).join("");
+}
+
+function renderList(newIds){
+  const items = filtered();
+  if(!items.length){
+    $("list").innerHTML = `<div class="empty">${incidents.length ? "Keine Einsätze passen zum Filter." : "Noch keine Alarmierungen im Log."}</div>`;
+    return;
+  }
+  let html = "", lastDay = "";
+  for(const i of items){
+    if(i.date !== lastDay){ html += `<div class="daysep">${esc(dayLabel(i.date))}</div>`; lastDay = i.date; }
+    const k = kind(i);
+    const units = i.alerts.map(a => a.unit).join(" · ");
+    html += `<button class="card${newIds && newIds.has(i.id) ? " flash" : ""}" data-id="${esc(i.id)}" aria-current="${i.id===selectedId}" style="--k:var(--${k});--ks:var(--${k}-soft)">
+      <span class="stripe"></span>
+      <span class="body">
+        <span class="row1"><span class="code">${esc(i.code)}</span>${i.cat ? `<span class="cat" title="${esc(CAT_NAMES[i.cat]||"")}">${esc(i.cat)}</span>` : ""}
+          <span class="time">${esc(i.time.slice(0,5))} · ${esc(ago(i.ts))}</span></span>
+        <span class="place">${esc(i.ort)}${i.addr ? `<span class="addr">${addrText(i)}</span>` : ""}</span>
+        ${i.desc ? `<span class="desc">${esc(i.desc)}${i.truncated || i.desc.length < 25 ? '<span class="cut"> …</span>' : ""}</span>` : ""}
+        <span class="units">${i.alerts.length} ${i.alerts.length === 1 ? "Schleife" : "Schleifen"}: ${esc(units)}</span>
+      </span></button>`;
+  }
+  $("list").innerHTML = html;
+}
+
+function renderStats(){
+  const t = incidents.filter(i => i.date === TODAY);
+  $("st-today").textContent = t.length;
+  $("st-units").textContent = t.reduce((s,i) => s + i.alerts.length, 0);
+  $("st-last").textContent = incidents[0] ? incidents[0].time.slice(0,5) : "–";
+}
+
+async function renderMarkers(){
+  const live = new Set(filtered().map(i => i.id));
+  for(const [id, m] of markers){ if(!live.has(id)){ map.removeLayer(m.marker); markers.delete(id); } }
+  const pts = [];
+  for(const inc of filtered()){
+    const loc = await locate(inc);
+    if(!loc || !live.has(inc.id)) continue;
+    pts.push([loc.lat, loc.lon]);
+    if(markers.has(inc.id)){ markers.get(inc.id).marker.setIcon(pinIcon(inc, inc.id===selectedId, !loc.exact)); continue; }
+    const marker = L.marker([loc.lat, loc.lon], { icon: pinIcon(inc, inc.id===selectedId, !loc.exact),
+      title: `${inc.code} ${inc.ort} ${inc.addr}`, zIndexOffset: inc.ts / 1e9 })
+      .on("click", () => select(inc.id, false)).addTo(map);
+    markers.set(inc.id, { marker, loc });
+  }
+  if(firstFit && pts.length && !selectedId){ firstFit = false; map.fitBounds(pts, { padding:[60,60], maxZoom: 13 }); }
+}
+let firstFit = true;
+
+function renderDetail(){
+  const inc = incidents.find(i => i.id === selectedId);
+  const box = $("detail");
+  if(!inc){ box.hidden = true; return; }
+  const k = kind(inc), m = markers.get(inc.id), loc = m && m.loc;
+  const q = encodeURIComponent(`${inc.addr ? inc.addr + ", " : ""}${inc.ort}`);
+  box.style.setProperty("--k", `var(--${k})`); box.style.setProperty("--ks", `var(--${k}-soft)`);
+  box.innerHTML = `
+    <header><span class="code">${esc(inc.code)}</span>${inc.cat ? `<span class="cat">${esc(inc.cat)}</span>` : ""}
+      <span class="lbl">${KIND_LABEL[k]}</span>
+      <button class="icon-btn close" id="btn-close" aria-label="Schließen">✕</button></header>
+    <section>
+      <div class="place">${esc(inc.ort)}${inc.addr ? `<span class="addr">${addrText(inc)}</span>` : ""}</div>
+      ${inc.desc ? `<div class="desc">${esc(inc.desc)}${inc.truncated ? '<span class="cut"> … (vom Pager gekürzt)</span>' : ""}</div>` : ""}
+      ${inc.cat && CAT_NAMES[inc.cat] ? `<div class="geo-note">${esc(inc.cat)} = ${esc(CAT_NAMES[inc.cat])}</div>` : ""}
+      <div class="geo-note">${loc ? (loc.exact ? "Position aus Adresse ermittelt." : "Ungefähre Position (Ortsmitte), Adresse nicht genau auffindbar.") : "Position wird gesucht oder wurde nicht gefunden."}</div>
+      <div class="links">
+        ${APP ? `<a class="icon-btn" target="_blank" href="${loc ? `geo:${loc.lat},${loc.lon}?q=${loc.lat},${loc.lon}(${encodeURIComponent(inc.code + " " + inc.ort)})` : `geo:0,0?q=${q}`}">Navigation starten</a>` :
+          `<a class="icon-btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${loc ? loc.lat+","+loc.lon : q}">Route (Google)</a>`}
+        <a class="icon-btn" target="_blank" rel="noopener" href="https://www.openstreetmap.org/${loc ? `?mlat=${loc.lat}&mlon=${loc.lon}#map=16/${loc.lat}/${loc.lon}` : `search?query=${q}`}">OpenStreetMap</a>
+      </div>
+    </section>
+    <section>
+      <span class="lbl">Alarmierte Schleifen · ${esc(inc.time)} · ${esc(inc.date.split("-").reverse().join("."))}</span>
+      <ul class="ulist">${inc.alerts.map(a => `<li><span class="t">${esc(a.time)}</span><span>${esc(a.unit)}</span><span class="ric">RIC ${esc(a.ric)}</span></li>`).join("")}</ul>
+    </section>
+    <section>
+      <span class="lbl">Rohmeldung</span>
+      <pre class="raw">${esc(inc.alerts[0].raw)}</pre>
+    </section>`;
+  box.hidden = false;
+  $("btn-close").onclick = () => select(null);
+}
+
+function select(id, fromList = true){
+  selectedId = id;
+  document.querySelectorAll(".card").forEach(c => c.setAttribute("aria-current", c.dataset.id === id));
+  for(const [mid, m] of markers){
+    const inc = incidents.find(i => i.id === mid);
+    if(inc) m.marker.setIcon(pinIcon(inc, mid === id, !m.loc.exact));
+  }
+  renderDetail();
+  if(!id) return;
+  if(window.matchMedia("(max-width:760px)").matches && fromList) setView("map");
+  const inc = incidents.find(i => i.id === id);
+  locate(inc).then(loc => {
+    if(loc && selectedId === id){ map.flyTo([loc.lat, loc.lon], loc.exact ? 15 : 13, { duration: .8 }); renderDetail(); }
+  });
+  if(!fromList){ const el = document.querySelector(`.card[data-id="${CSS.escape(id)}"]`); el && el.scrollIntoView({ block:"nearest", behavior:"smooth" }); }
+}
+
+function renderAll(newIds){ renderChips(); renderList(newIds); renderStats(); renderDetail(); renderMarkers(); }
+
+/* ---------- Laden ---------- */
+function setStatus(kind, text){ $("dot").className = "dot " + kind; $("status-text").textContent = text; }
+function showBanner(html){ const b = $("banner"); b.innerHTML = html; b.hidden = !html; }
+
+async function decode(res){
+  const buf = await res.arrayBuffer();
+  try{ return new TextDecoder("utf-8", { fatal: true }).decode(buf); }
+  catch{ return new TextDecoder("windows-1252").decode(buf); }
+}
+
+function ingest(text, source){
+  const { alerts, header: h } = parseFeed(text);
+  header = h;
+  const next = groupIncidents(alerts);
+  const newIds = new Set(next.filter(i => !seen.has(i.id)).map(i => i.id));
+  incidents = next;
+  if(!firstLoad && newIds.size){ alarm(next.find(i => newIds.has(i.id))); }
+  next.forEach(i => seen.add(i.id)); store.set("seen", [...seen].slice(-500));
+  renderAll(firstLoad ? null : newIds);
+  firstLoad = false;
+  $("src-label").textContent = source + (header ? ` · Log ab ${header.time.slice(0,5)}` : "");
+}
+
+async function load(){
+  if(mode === "paste") return;
+  setStatus("", "Lade …");
+  try{
+    const u = new URL(cfg.url, location.href);
+    u.searchParams.set("_", Date.now());
+    const res = await fetch(u, { cache: "no-store" });
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const text = await decode(res);
+    mode = "live"; showBanner("");
+    ingest(text, "Live");
+    setStatus("live", "Live · " + new Date().toLocaleTimeString("de-DE"));
+  }catch(e){
+    const mixed = location.protocol === "https:" && /^http:/i.test(cfg.url);
+    showBanner(`<b>Keine Verbindung zur Datenquelle.</b> ${APP ? "Der Server <code>" + esc(cfg.url) + "</code> antwortet nicht (" + esc(e.message) + "). Prüfe die Internetverbindung oder die Adresse unter ⚙." : mixed ? "Diese Seite läuft über https, die Quelle nur über http; der Browser blockiert das. Lege die Datei auf denselben Server wie die Alarmdaten." :
+      "Die Abfrage von <code>" + esc(cfg.url) + "</code> ist fehlgeschlagen (" + esc(e.message) + "). Meist fehlt der CORS-Zugriff: Lege die Datei auf denselben Server oder trage die Adresse unter „Quelle“ ein."} Angezeigt werden Beispieldaten.`);
+    if(!incidents.length || mode === "demo"){ mode = "demo"; ingest(DEMO, "Beispieldaten"); }
+    setStatus(mode === "demo" ? "demo" : "err", mode === "demo" ? "Beispieldaten" : "Verbindung verloren");
+  }
+}
+function schedule(){ clearInterval(timer); timer = setInterval(load, Math.max(5, +cfg.interval || 30) * 1000); }
+
+/* ---------- Alarmierung ---------- */
+let audioCtx = null;
+function beep(){
+  if(!audioCtx) return;
+  const t0 = audioCtx.currentTime;
+  [[0,880],[0.35,660],[0.7,880],[1.05,660]].forEach(([dt,f]) => {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = "square"; o.frequency.value = f; g.gain.setValueAtTime(.08, t0+dt); g.gain.exponentialRampToValueAtTime(.0001, t0+dt+.3);
+    o.connect(g).connect(audioCtx.destination); o.start(t0+dt); o.stop(t0+dt+.32);
+  });
+}
+const APP = window.AndroidBridge || null;   // gesetzt, wenn die Seite in der Android-App läuft
+function alarm(inc){
+  if(soundOn) beep();
+  if(APP){ try{ APP.notify(`${inc.code} ${inc.ort}`, [inc.addr, inc.cat, inc.desc].filter(Boolean).join(" · ")); }catch{} }
+  document.title = `🔴 ${inc.code} ${inc.ort} · Einsatzmonitor`;
+  setTimeout(() => document.title = "Einsatzmonitor", 60000);
+  if(!APP) try{
+    if("Notification" in window && Notification.permission === "granted")
+      new Notification(`${inc.code} ${inc.ort}`, { body: [inc.addr, inc.cat, inc.desc].filter(Boolean).join(" · "), tag: inc.id });
+  }catch{}
+}
+
+/* ---------- Ereignisse ---------- */
+$("chips").addEventListener("click", e => {
+  const b = e.target.closest(".chip"); if(!b) return;
+  filter = b.dataset.f; store.set("filter", filter); renderChips(); renderList(); renderMarkers();
+});
+$("search").addEventListener("input", e => { query = e.target.value; renderList(); renderMarkers(); });
+$("list").addEventListener("click", e => { const c = e.target.closest(".card"); if(c) select(c.dataset.id === selectedId ? null : c.dataset.id); });
+$("btn-refresh").onclick = () => { mode = "live"; load(); schedule(); };
+$("btn-sound").onclick = () => {
+  soundOn = !soundOn;
+  if(soundOn){
+    try{ audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); beep(); }catch{}
+    if(!APP) try{ if("Notification" in window && Notification.permission === "default") Notification.requestPermission(); }catch{}
+  }
+  $("btn-sound").classList.toggle("on", soundOn); $("btn-sound").setAttribute("aria-pressed", soundOn);
+  $("sound-label").textContent = soundOn ? "Ton an" : "Ton aus";
+};
+$("btn-settings").onclick = () => {
+  $("cfg-url").value = cfg.url; $("cfg-interval").value = cfg.interval; $("cfg-viewbox").value = cfg.viewbox; $("cfg-region").value = cfg.region;
+  $("dlg-settings").showModal();
+};
+$("dlg-settings").addEventListener("close", () => {
+  if($("dlg-settings").returnValue !== "save") return;
+  const vbChanged = $("cfg-viewbox").value.trim() !== cfg.viewbox || $("cfg-region").value.trim() !== cfg.region;
+  cfg = { url: $("cfg-url").value.trim() || DEFAULTS.url, interval: +$("cfg-interval").value || 30,
+          viewbox: $("cfg-viewbox").value.trim(), region: $("cfg-region").value.trim() };
+  store.set("cfg", cfg);
+  if(vbChanged){ for(const k in geoCache) delete geoCache[k]; store.set("geo", {}); markers.forEach(m => map.removeLayer(m.marker)); markers.clear(); firstFit = true; }
+  mode = "live"; load(); schedule();
+});
+$("btn-paste-open").onclick = () => { $("dlg-settings").close("cancel"); $("paste-text").value = ""; $("dlg-paste").showModal(); };
+$("dlg-paste").addEventListener("close", () => {
+  if($("dlg-paste").returnValue !== "ok") return;
+  const t = $("paste-text").value; if(!t.trim()) return;
+  mode = "paste"; firstFit = true; showBanner(""); ingest(t, "Eingefügte Daten"); setStatus("demo", "Eingefügte Daten");
+});
+
+function setView(v){
+  document.body.dataset.view = v;
+  $("tab-list").setAttribute("aria-selected", v === "list"); $("tab-map").setAttribute("aria-selected", v === "map");
+  if(v === "map") setTimeout(() => map.invalidateSize(), 50);
+}
+$("tab-list").onclick = () => setView("list");
+$("tab-map").onclick  = () => setView("map");
+document.addEventListener("keydown", e => { if(e.key === "Escape" && selectedId) select(null); });
+
+/* Android-App: externe Links, Zurück-Taste, Rückkehr in die App, Bildschirm an */
+if(APP){
+  document.addEventListener("click", e => {
+    const a = e.target.closest("a[href]"); if(!a) return;
+    if(/^(https?:|geo:)/i.test(a.getAttribute("href"))){ e.preventDefault(); APP.openExternal(a.href); }
+  });
+  window.onAndroidBack = () => {
+    const open = document.querySelector("dialog[open]");
+    if(open){ open.close("cancel"); return true; }
+    if(selectedId){ select(null); return true; }
+    if(document.body.dataset.view === "map" && window.matchMedia("(max-width:760px)").matches){ setView("list"); return true; }
+    return false;
+  };
+  window.onAndroidResume = () => { if(mode !== "paste") load(); };
+  const wake = $("btn-wake"); wake.hidden = false;
+  let wakeOn = store.get("wake", false);
+  const applyWake = () => { try{ APP.keepScreenOn(wakeOn); }catch{} wake.classList.toggle("on", wakeOn); wake.setAttribute("aria-pressed", wakeOn); $("wake-label").textContent = wakeOn ? "Display an" : "Display aus"; };
+  wake.onclick = () => { wakeOn = !wakeOn; store.set("wake", wakeOn); applyWake(); };
+  applyWake();
+}
+setInterval(() => { if(incidents.length) renderList(); }, 60000); // "vor X Min" aktuell halten
+
+load(); schedule();
+</script>
+</body>
+</html>
